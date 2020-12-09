@@ -60,10 +60,11 @@
 
 #define HSTR_COLOR_NORMAL  1
 #define HSTR_COLOR_HIROW   2
-#define HSTR_COLOR_INFO    2
+#define HSTR_COLOR_INFO    1
 #define HSTR_COLOR_PROMPT  3
 #define HSTR_COLOR_DELETE  4
 #define HSTR_COLOR_MATCH   5
+#define HSTR_COLOR_HELP_LABEL  6
 
 #define HSTR_ENV_VAR_CONFIG      "HSTR_CONFIG"
 #define HSTR_ENV_VAR_PROMPT      "HSTR_PROMPT"
@@ -260,6 +261,7 @@ static const char* HELP_STRING=
         "\n  --favorites              -f ... show favorites view"
         "\n  --kill-last-command      -k ... delete last command in history"
         "\n  --non-interactive        -n ... print filtered history and exit"
+	    "\n  --create-text-file       -o ... creat shell history text file"
         "\n  --show-configuration     -s ... show configuration to be added to ~/.bashrc"
         "\n  --show-zsh-configuration -z ... show zsh configuration to be added to ~/.zshrc"
         "\n  --show-blacklist         -b ... show commands to skip on history indexation"
@@ -284,6 +286,7 @@ static const struct option long_options[] = {
         {"version",                GETOPT_NO_ARGUMENT, NULL, 'V'},
         {"help",                   GETOPT_NO_ARGUMENT, NULL, 'h'},
         {"non-interactive",        GETOPT_NO_ARGUMENT, NULL, 'n'},
+		{"create-text-file", GETOPT_NO_ARGUMENT, NULL, 'o'},
         {"show-configuration",     GETOPT_NO_ARGUMENT, NULL, 's'},
         {"show-zsh-configuration", GETOPT_NO_ARGUMENT, NULL, 'z'},
         {"show-blacklist",         GETOPT_NO_ARGUMENT, NULL, 'b'},
@@ -665,7 +668,17 @@ void print_help_label(void)
 
     char screenLine[CMDLINE_LNG];
     snprintf(screenLine, getmaxx(stdscr), "%s", LABEL_HELP);
+
+	if (hstr->theme & HSTR_THEME_COLOR) {
+		color_attr_on(A_BOLD);
+		color_attr_on(COLOR_PAIR(HSTR_COLOR_HELP_LABEL));
+	}
     mvprintw(hstr->promptYHelp, 0, "%s", screenLine); clrtoeol();
+	if (hstr->theme & HSTR_THEME_COLOR) {
+		color_attr_off(A_BOLD);
+		color_attr_on(COLOR_PAIR(HSTR_COLOR_NORMAL));
+	}
+	
     refresh();
 
     move(cursorY, cursorX);
@@ -774,13 +787,15 @@ void print_history_label(void)
         strcat(screenLine, "-");
     }
     if(hstr->theme & HSTR_THEME_COLOR) {
-        color_attr_on(A_BOLD);
+        //color_attr_on(A_BOLD);
+		color_attr_on(COLOR_PAIR(HSTR_COLOR_INFO));
     }
     color_attr_on(A_REVERSE);
     mvprintw(hstr->promptYHistory, 0, "%s", screenLine);
     color_attr_off(A_REVERSE);
     if(hstr->theme & HSTR_THEME_COLOR) {
-        color_attr_off(A_BOLD);
+        //color_attr_off(A_BOLD);
+		color_attr_on(COLOR_PAIR(HSTR_COLOR_INFO));
     }
     refresh();
 }
@@ -1039,6 +1054,7 @@ void hstr_print_highlighted_selection_row(char* text, int y, int width)
 {
     color_attr_on(A_BOLD);
     if(hstr->theme & HSTR_THEME_COLOR) {
+		color_attr_off(A_BOLD);
         color_attr_on(COLOR_PAIR(HSTR_COLOR_HIROW));
     } else {
         color_attr_on(A_REVERSE);
@@ -1242,10 +1258,11 @@ void loop_to_select(void)
     // TODO move the code below to hstr_curses
     color_init_pair(HSTR_COLOR_NORMAL, -1, -1);
     if(hstr->theme & HSTR_THEME_COLOR) {
-        color_init_pair(HSTR_COLOR_HIROW, COLOR_WHITE, COLOR_GREEN);
-        color_init_pair(HSTR_COLOR_PROMPT, COLOR_BLUE, -1);
+        color_init_pair(HSTR_COLOR_HIROW, COLOR_BLUE, COLOR_WHITE);
+        color_init_pair(HSTR_COLOR_PROMPT, COLOR_WHITE, -1);
         color_init_pair(HSTR_COLOR_DELETE, COLOR_WHITE, COLOR_RED);
         color_init_pair(HSTR_COLOR_MATCH, COLOR_RED, -1);
+		color_init_pair(HSTR_COLOR_HELP_LABEL, COLOR_RED,  -1);
     }
 
     color_attr_on(COLOR_PAIR(HSTR_COLOR_NORMAL));
@@ -1665,10 +1682,77 @@ void hstr_interactive(void)
     hstr_exit(EXIT_SUCCESS);
 }
 
+void creat_txtFile(void) {
+	int fd1, fd2, fd3;
+	int num;
+	char buf[6];
+
+	fd1 = open("/home/ec2-user/.bash_history", O_RDONLY);
+
+	if (fd1 == -1) {
+		printf("Open Error\n");
+	}
+
+	fd2 = open("./history_hstr.txt", O_CREAT | O_WRONLY | O_TRUNC, 0644);
+
+	if (fd2 == -1) {
+		printf("Copy Error\n");
+	}
+
+	while ((num = read(fd1, buf, 4)) > 0) {
+		if (write(fd2, buf, num) != num)
+			printf("Write Error\n");
+	}
+
+	if (num == -1) {
+		printf("Read Error\n");
+	}
+
+	fd3 = open("./buf.txt", O_CREAT, 0644);
+
+	close(fd1);
+	close(fd2);
+	close(fd3);
+
+	const int max = 100;
+	char line[max];
+	char* pLine;
+	
+	FILE* in = fopen("history_hstr.txt", "r");
+	FILE* out = fopen("buf.txt", "w");
+
+	int i = 0;
+	while (!feof(in)) {
+			pLine = fgets(line, max, in);
+			fprintf(out, "%d : %s", i, pLine);
+			i++;
+	}
+
+	if (feof(in)) {
+		fprintf(out, "\n");
+	}
+
+	fclose(in);
+	fclose(out);
+
+	fd2 = open("./history_hstr.txt", O_WRONLY | O_TRUNC, 0644);
+	fd3 = open("./buf.txt", O_RDONLY);
+
+	while ((num = read(fd3, buf, 4)) > 0) {
+		if (write(fd2, buf, num) != num)
+			printf("Write Error\n");
+	}
+
+	unlink("./buf.txt");
+
+	close(fd2);
+	close(fd3);
+}
+
 void hstr_getopt(int argc, char **argv)
 {
     int option_index = 0;
-    int option = getopt_long(argc, argv, "fkVhnszb", long_options, &option_index);
+    int option = getopt_long(argc, argv, "fkVhnoszb", long_options, &option_index);
     if(option != -1) {
         switch(option) {
         case 'f':
@@ -1677,6 +1761,10 @@ void hstr_getopt(int argc, char **argv)
         case 'n':
             hstr->interactive=false;
             break;
+		case 'o':
+			creat_txtFile();
+			hstr_exit(EXIT_SUCCESS);
+			break;
         case 'k':
             if(history_mgmt_remove_last_history_entry(hstr->verboseKill)) {
                 hstr_exit(EXIT_SUCCESS);
@@ -1729,7 +1817,6 @@ int hstr_main(int argc, char* argv[])
 
     hstr=malloc(sizeof(Hstr));
     hstr_init();
-
     hstr_get_env_configuration();
     hstr_getopt(argc, argv);
     favorites_get(hstr->favorites);

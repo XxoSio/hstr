@@ -37,6 +37,13 @@
 #include "hstr_blacklist.h"
 #include "hstr_history.h"
 
+#include <stdio.h>
+#include <fcntl.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include <stdbool.h>
+
 int hstr_main(int argc, char* argv[]);
 
 #endif
